@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VisualChatbotAI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div id="particles-js" class="particles-container"></div>
+    <div class="theme-toggle">
+        <button id="theme-switch"><i class="fas fa-moon"></i></button>
+    </div>
+    
+    <div class="container glass-effect">
+        <header>
+            <h1><i class="fas fa-robot"></i> VisualChatbotAI</h1>
+            <p>Upload an image and ask questions about it</p>
+        </header>
+        
+        <div class="chat-container">
+            <div id="chat-messages" class="chat-messages">
+                <div class="message bot appear">
+                    <div class="message-content">
+                        Hello! Upload an image and ask me questions about it. I'll analyze the image and respond based on what I see.
+                    </div>
+                    <div class="message-time">Just now</div>
+                </div>
+            </div>
+            
+            <div class="suggestions-container">
+                <div class="suggestion-chips">
+                    <button class="suggestion-chip" data-question="What's in this image?">What's in this image?</button>
+                    <button class="suggestion-chip" data-question="Describe this scene">Describe this scene</button>
+                    <button class="suggestion-chip" data-question="Are there any people?">Are there any people?</button>
+                </div>
+            </div>
+            
+            <div class="image-upload-container glass-effect">
+                <form id="image-form" enctype="multipart/form-data">
+                    <div class="upload-options">
+                        <div class="upload-option">
+                            <label for="file-upload" class="custom-file-upload pulse-effect">
+                                <i class="fas fa-cloud-upload-alt"></i> Upload Image
+                            </label>
+                            <input id="file-upload" type="file" name="file" accept="image/jpeg,image/png,image/jpg">
+                            <span id="file-name">No file chosen</span>
+                        </div>
+                        
+                        <div class="upload-option">
+                            <button type="button" id="camera-btn" class="custom-button">
+                                <i class="fas fa-camera"></i> Take Photo
+                            </button>
+                        </div>
+                        
+                        <span class="or">OR</span>
+                        
+                        <div class="upload-option">
+                            <input type="text" id="image-url" name="image_url" placeholder="Paste image URL here">
+                        </div>
+                    </div>
+                    
+                    <div class="preview-container" id="drop-area">
+                        <p class="drop-text">Drop image here</p>
+                        <div class="image-controls" style="display: none;">
+                            <button type="button" id="zoom-in"><i class="fas fa-search-plus"></i></button>
+                            <button type="button" id="zoom-out"><i class="fas fa-search-minus"></i></button>
+                            <button type="button" id="rotate"><i class="fas fa-redo"></i></button>
+                            <button type="button" id="reset"><i class="fas fa-sync"></i></button>
+                        </div>
+                        <img id="image-preview" src="#" alt="Preview" style="display: none;">
+                        <video id="camera-stream" style="display: none;" autoplay></video>
+                        <canvas id="photo-canvas" style="display: none;"></canvas>
+                    </div>
+                    
+                    <div class="input-container">
+                        <button type="button" id="voice-btn" class="voice-button">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        <input type="text" id="question-input" name="question" placeholder="Ask a question about the image...">
+                        <button type="submit" id="send-btn" class="pulse-on-hover">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="loader" id="loader" style="display: none;">
+            <div class="spinner"></div>
+            <p>Analyzing image...</p>
+            <div class="progress-bar">
+                <div class="progress" id="progress-indicator"></div>
+            </div>
+        </div>
+        
+        <div class="actions-bar">
+            <button id="download-chat" class="action-button"><i class="fas fa-download"></i> Save Chat</button>
+            <button id="clear-chat" class="action-button"><i class="fas fa-trash"></i> Clear Chat</button>
+            <button id="text-to-speech" class="action-button"><i class="fas fa-volume-up"></i> Read Aloud</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize particles.js
+            particlesJS('particles-js', {
+                particles: {
+                    number: { value: 80, density: { enable: true, value_area: 800 } },
+                    color: { value: '#ffffff' },
+                    opacity: { value: 0.1, random: false },
+                    size: { value: 3, random: true },
+                    line_linked: {
+                        enable: true,
+                        distance: 150,
+                        color: '#ffffff',
+                        opacity: 0.1,
+                        width: 1
+                    },
+                    move: {
+                        enable: true,
+                        speed: 2,
+                        direction: 'none',
+                        random: false,
+                        straight: false,
+                        out_mode: 'out',
+                        bounce: false
+                    }
+                },
+                interactivity: {
+                    detect_on: 'canvas',
+                    events: {
+                        onhover: { enable: true, mode: 'grab' },
+                        onclick: { enable: true, mode: 'push' },
+                        resize: true
+                    }
+                },
+                retina_detect: true
+            });
+            
+            const form = document.getElementById('image-form');
+            const fileUpload = document.getElementById('file-upload');
+            const fileName = document.getElementById('file-name');
+            const imagePreview = document.getElementById('image-preview');
+            const imageUrl = document.getElementById('image-url');
+            const chatMessages = document.getElementById('chat-messages');
+            const loader = document.getElementById('loader');
+            const dropArea = document.getElementById('drop-area');
+            const cameraBtn = document.getElementById('camera-btn');
+            const cameraStream = document.getElementById('camera-stream');
+            const photoCanvas = document.getElementById('photo-canvas');
+            const voiceBtn = document.getElementById('voice-btn');
+            const themeSwitch = document.getElementById('theme-switch');
+            const progressIndicator = document.getElementById('progress-indicator');
+            const suggestionChips = document.querySelectorAll('.suggestion-chip');
+            const imageControls = document.querySelector('.image-controls');
+            const downloadChatBtn = document.getElementById('download-chat');
+            const clearChatBtn = document.getElementById('clear-chat');
+            const textToSpeechBtn = document.getElementById('text-to-speech');
+            
+            // Theme toggle
+            themeSwitch.addEventListener('click', function() {
+                const htmlElement = document.documentElement;
+                if (htmlElement.getAttribute('data-theme') === 'dark') {
+                    htmlElement.setAttribute('data-theme', 'light');
+                    themeSwitch.innerHTML = '<i class="fas fa-sun"></i>';
+                } else {
+                    htmlElement.setAttribute('data-theme', 'dark');
+                    themeSwitch.innerHTML = '<i class="fas fa-moon"></i>';
+                }
+            });
+            
+            // Show file name when a file is selected
+            fileUpload.addEventListener('change', function() {
+                if (this.files && this.files[0]) {
+                    fileName.textContent = this.files[0].name;
+                    
+                    // Preview the image
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        imagePreview.src = e.target.result;
+                        imagePreview.style.display = 'block';
+                        imageControls.style.display = 'flex';
+                        cameraStream.style.display = 'none';
+                        // Clear URL input
+                        imageUrl.value = '';
+                    }
+                    reader.readAsDataURL(this.files[0]);
+                }
+            });
+            
+            // Preview image from URL
+            imageUrl.addEventListener('blur', function() {
+                if (this.value) {
+                    imagePreview.src = this.value;
+                    imagePreview.style.display = 'block';
+                    imageControls.style.display = 'flex';
+                    cameraStream.style.display = 'none';
+                    // Clear file input
+                    fileUpload.value = '';
+                    fileName.textContent = 'No file chosen';
+                }
+            });
+            
+            // Drag and drop functionality
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropArea.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropArea.addEventListener(eventName, unhighlight, false);
+            });
+            
+            function highlight() {
+                dropArea.classList.add('highlight');
+            }
+            
+            function unhighlight() {
+                dropArea.classList.remove('highlight');
+            }
+            
+            dropArea.addEventListener('drop', handleDrop, false);
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                
+                if (files && files[0]) {
+                    fileUpload.files = files;
+                    fileName.textContent = files[0].name;
+                    
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        imagePreview.src = e.target.result;
+                        imagePreview.style.display = 'block';
+                        imageControls.style.display = 'flex';
+                        cameraStream.style.display = 'none';
+                    }
+                    reader.readAsDataURL(files[0]);
+                }
+            }
+            
+            // Camera functionality
+            cameraBtn.addEventListener('click', function() {
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    navigator.mediaDevices.getUserMedia({ video: true })
+                        .then(function(stream) {
+                            cameraStream.srcObject = stream;
+                            cameraStream.style.display = 'block';
+                            imagePreview.style.display = 'none';
+                            
+                            // Add a capture button
+                            if (!document.getElementById('capture-btn')) {
+                                const captureBtn = document.createElement('button');
+                                captureBtn.type = 'button';
+                                captureBtn.id = 'capture-btn';
+                                captureBtn.className = 'capture-button';
+                                captureBtn.innerHTML = '<i class="fas fa-camera"></i>';
+                                dropArea.appendChild(captureBtn);
+                                
+                                captureBtn.addEventListener('click', function() {
+                                    // Capture the current frame
+                                    photoCanvas.width = cameraStream.videoWidth;
+                                    photoCanvas.height = cameraStream.videoHeight;
+                                    photoCanvas.getContext('2d').drawImage(cameraStream, 0, 0);
+                                    
+                                    // Convert to file
+                                    photoCanvas.toBlob(function(blob) {
+                                        const file = new File([blob], "camera-photo.jpg", { type: "image/jpeg" });
+                                        
+                                        // Create a FileList-like object
+                                        const dataTransfer = new DataTransfer();
+                                        dataTransfer.items.add(file);
+                                        fileUpload.files = dataTransfer.files;
+                                        
+                                        // Display image
+                                        imagePreview.src = photoCanvas.toDataURL('image/jpeg');
+                                        imagePreview.style.display = 'block';
+                                        imageControls.style.display = 'flex';
+                                        cameraStream.style.display = 'none';
+                                        
+                                        // Stop the stream
+                                        cameraStream.srcObject.getTracks().forEach(track => track.stop());
+                                        
+                                        // Remove capture button
+                                        captureBtn.remove();
+                                    }, 'image/jpeg');
+                                });
+                            }
+                        })
+                        .catch(function(error) {
+                            alert('Camera error: ' + error.message);
+                        });
+                } else {
+                    alert('Your browser does not support camera access');
+                }
+            });
+            
+            // Voice input
+            voiceBtn.addEventListener('click', function() {
+                if ('webkitSpeechRecognition' in window) {
+                    const recognition = new webkitSpeechRecognition();
+                    recognition.continuous = false;
+                    recognition.interimResults = false;
+                    
+                    voiceBtn.classList.add('listening');
+                    voiceBtn.innerHTML = '<i class="fas fa-microphone-alt"></i>';
+                    
+                    recognition.start();
+                    
+                    recognition.onresult = function(event) {
+                        const transcript = event.results[0][0].transcript;
+                        document.getElementById('question-input').value = transcript;
+                    };
+                    
+                    recognition.onend = function() {
+                        voiceBtn.classList.remove('listening');
+                        voiceBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+                    };
+                    
+                    recognition.onerror = function(event) {
+                        voiceBtn.classList.remove('listening');
+                        voiceBtn.innerHTML = '<i class="fas fa-microphone"></i>';
+                        alert('Speech recognition error: ' + event.error);
+                    };
+                } else {
+                    alert('Your browser does not support speech recognition');
+                }
+            });
+            
+            // Image controls functionality
+            document.getElementById('zoom-in').addEventListener('click', function() {
+                const scale = parseFloat(imagePreview.dataset.scale || 1) + 0.1;
+                imagePreview.style.transform = `scale(${scale})`;
+                imagePreview.dataset.scale = scale;
+            });
+            
+            document.getElementById('zoom-out').addEventListener('click', function() {
+                const scale = Math.max(0.5, (parseFloat(imagePreview.dataset.scale || 1) - 0.1));
+                imagePreview.style.transform = `scale(${scale})`;
+                imagePreview.dataset.scale = scale;
+            });
+            
+            document.getElementById('rotate').addEventListener('click', function() {
+                const rotation = (parseInt(imagePreview.dataset.rotation || 0) + 90) % 360;
+                imagePreview.style.transform = `rotate(${rotation}deg)`;
+                imagePreview.dataset.rotation = rotation;
+            });
+            
+            document.getElementById('reset').addEventListener('click', function() {
+                imagePreview.style.transform = '';
+                imagePreview.dataset.scale = 1;
+                imagePreview.dataset.rotation = 0;
+            });
+            
+            // Suggestion chips
+            suggestionChips.forEach(chip => {
+                chip.addEventListener('click', function() {
+                    document.getElementById('question-input').value = this.dataset.question;
+                });
+            });
+            
+            // Form submission
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const questionInput = document.getElementById('question-input');
+                const question = questionInput.value.trim();
+                
+                if (!question) {
+                    alert('Please ask a question about the image.');
+                    return;
+                }
+                
+                if (!fileUpload.files[0] && !imageUrl.value && !imagePreview.src.includes('data:image')) {
+                    alert('Please upload an image, provide an image URL, or take a photo.');
+                    return;
+                }
+                
+                // Add user message to chat
+                addMessage(question, 'user');
+                
+                // Show loader with progress
+                loader.style.display = 'flex';
+                
+                // Simulate progress
+                let progress = 0;
+                const progressInterval = setInterval(() => {
+                    progress += Math.random() * 10;
+                    if (progress > 100) progress = 100;
+                    progressIndicator.style.width = progress + '%';
+                    if (progress === 100) clearInterval(progressInterval);
+                }, 300);
+                
+                // Prepare form data
+                const formData = new FormData(form);
+                
+                // If we have a canvas photo, add it
+                if (photoCanvas.toDataURL('image/jpeg').includes('data:image')) {
+                    photoCanvas.toBlob(function(blob) {
+                        formData.append('file', blob, 'camera-photo.jpg');
+                        sendRequest(formData, progressInterval);
+                    }, 'image/jpeg');
+                } else {
+                    sendRequest(formData, progressInterval);
+                }
+            });
+            
+            function sendRequest(formData, progressInterval) {
+                // Send request
+                fetch('/process_image', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Complete progress animation
+                    progressIndicator.style.width = '100%';
+                    clearInterval(progressInterval);
+                    
+                    // Hide loader after a short delay
+                    setTimeout(() => {
+                        loader.style.display = 'none';
+                        progressIndicator.style.width = '0%';
+                        
+                        if (data.error) {
+                            addMessage(data.error, 'bot');
+                        } else {
+                            addMessage(data.response, 'bot');
+                        }
+                        
+                        // Clear question input
+                        document.getElementById('question-input').value = '';
+                    }, 500);
+                })
+                .catch(error => {
+                    // Hide loader
+                    clearInterval(progressInterval);
+                    loader.style.display = 'none';
+                    progressIndicator.style.width = '0%';
+                    
+                    console.error('Error:', error);
+                    addMessage('Sorry, an error occurred. Please try again.', 'bot');
+                });
+            }
+            
+            // Download chat history
+            downloadChatBtn.addEventListener('click', function() {
+                const messages = document.querySelectorAll('.message');
+                let chatText = '';
+                
+                messages.forEach(msg => {
+                    const sender = msg.classList.contains('user') ? 'You' : 'Bot';
+                    const content = msg.querySelector('.message-content').textContent;
+                    const time = msg.querySelector('.message-time').textContent;
+                    chatText += `${sender} (${time}): ${content}\n\n`;
+                });
+                
+                const blob = new Blob([chatText], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'chat-history.txt';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+            
+            // Clear chat
+            clearChatBtn.addEventListener('click', function() {
+                if (confirm('Are you sure you want to clear the chat history?')) {
+                    const messages = Array.from(document.querySelectorAll('.message'));
+                    // Keep only the first bot welcome message
+                    messages.slice(1).forEach(msg => msg.remove());
+                }
+            });
+            
+            // Text to speech
+            textToSpeechBtn.addEventListener('click', function() {
+                if ('speechSynthesis' in window) {
+                    const lastBotMessage = document.querySelector('.message.bot:last-child .message-content');
+                    if (lastBotMessage) {
+                        const text = lastBotMessage.textContent;
+                        const utterance = new SpeechSynthesisUtterance(text);
+                        window.speechSynthesis.speak(utterance);
+                    } else {
+                        alert('No message to read');
+                    }
+                } else {
+                    alert('Your browser does not support text-to-speech');
+                }
+            });
+            
+            // Function to add message to chat
+            function addMessage(text, sender) {
+                const messageDiv = document.createElement('div');
+                messageDiv.classList.add('message', sender, 'appear');
+                
+                const messageContent = document.createElement('div');
+                messageContent.classList.add('message-content');
+                
+                // If it's a bot message, support markdown
+                if (sender === 'bot' && window.marked) {
+                    messageContent.innerHTML = marked.parse(text);
+                } else {
+                    messageContent.textContent = text;
+                }
+                
+                const messageTime = document.createElement('div');
+                messageTime.classList.add('message-time');
+                messageTime.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                
+                messageDiv.appendChild(messageContent);
+                messageDiv.appendChild(messageTime);
+                
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                
+                // Typing indicator for bot messages
+                if (sender === 'user') {
+                    const typingIndicator = document.createElement('div');
+                    typingIndicator.classList.add('message', 'bot', 'typing-indicator');
+                    typingIndicator.innerHTML = '<span></span><span></span><span></span>';
+                    chatMessages.appendChild(typingIndicator);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                    
+                    // Remove typing indicator when the bot message arrives
+                    setTimeout(() => {
+                        typingIndicator.remove();
+                    }, 1000);
+                }
+            }
+        });
+    </script>
+</body>
+</html>
